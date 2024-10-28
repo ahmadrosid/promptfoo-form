@@ -25,11 +25,16 @@ interface Scenario {
   tests: Test[];
 }
 
+interface Prompt {
+  role: string;
+  content: string;
+}
+
 interface Config {
   description: string;
   scenarios: Scenario[];
   providers: string[];
-  prompts: string[];
+  prompts: Prompt[];
   defaultTest: {
     assert: Assert[];
   };
@@ -49,7 +54,7 @@ function App() {
       "openai:gpt-4-mini",
       "anthropic:messages:claude-3-5-sonnet-latest",
     ],
-    prompts: ['[\n {\n "role": "system",\n "content": ""} ]'],
+    prompts: [],
     defaultTest: {
       assert: [],
     },
@@ -174,7 +179,7 @@ ${scenario.tests
 providers:
 ${config.providers.map((provider) => `  - "${provider}"`).join("\n")}
 prompts:
-${config.prompts.map((prompt) => `  - "${prompt}"`).join("\n")}
+- ${JSON.stringify(config.prompts)}
 defaultTest:
   assert:
 ${config.defaultTest.assert
@@ -186,46 +191,12 @@ ${config.defaultTest.assert
   .join("\n")}`;
 
     setGeneratedYaml(yaml);
+
+    return yaml;
   };
 
   const downloadYaml = () => {
-    const yaml = `description: "${config.description}"
-scenarios:
-${config.scenarios
-  .map(
-    (scenario) => `  - description: "${scenario.description}"
-    config:
-    - assert:
-${scenario.config[0].assert
-  .map(
-    (assert) => `      - type: "${assert.type}"
-        ${assert.provider ? `provider: "${assert.provider}"` : ""}
-        value: "${assert.value}"`
-  )
-  .join("\n")}
-    tests:
-${scenario.tests
-  .map(
-    (test) => `      - vars:
-        Question: "${test.vars.Question}"`
-  )
-  .join("\n")}`
-  )
-  .join("\n")}
-providers:
-${config.providers.map((provider) => `  - "${provider}"`).join("\n")}
-prompts:
-${config.prompts.map((prompt) => `  - "${prompt}"`).join("\n")}
-defaultTest:
-  assert:
-${config.defaultTest.assert
-  .map(
-    (assert) => `    - type: "${assert.type}"
-      ${assert.provider ? `provider: "${assert.provider}"` : ""}
-      value: "${assert.value}"`
-  )
-  .join("\n")}`;
-
+    const yaml = generateYaml();
     const blob = new Blob([yaml], { type: "text/yaml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -235,6 +206,24 @@ ${config.defaultTest.assert
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const updatePrompt = (index: number, field: string, value: string) => {
+    const newPrompts = [...config.prompts];
+    newPrompts[index] = { ...newPrompts[index], [field]: value };
+    setConfig({ ...config, prompts: newPrompts });
+  };
+
+  const removePrompt = (index: number) => {
+    const newPrompts = config.prompts.filter((_, i) => i !== index);
+    setConfig({ ...config, prompts: newPrompts });
+  };
+
+  const addPrompt = () => {
+    setConfig({
+      ...config,
+      prompts: [...config.prompts, { role: "system", content: "" }, { role: "user", content: "{{Question}}" }],
+    });
   };
 
   return (
@@ -275,6 +264,49 @@ ${config.defaultTest.assert
           </div>
 
           <div className="space-y-6">
+
+          <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-gray-800">Prompts</h2>
+              <button
+                onClick={addPrompt}
+                className="flex items-center gap-2 text-blue-600 hover:text-blue-700"
+              >
+                <PlusCircle size={20} />
+                Add Prompt
+              </button>
+            </div>
+            <div>
+              {config.prompts.map((prompt, promptIndex) => (
+                <div key={promptIndex} className="flex gap-2 mb-2">
+                  <select
+                    value={prompt.role}
+                    onChange={(e) =>
+                      updatePrompt(promptIndex, "role", e.target.value)
+                    }
+                    className="p-2 border rounded-md"
+                  >
+                    <option value="system">system</option>
+                    <option value="user">user</option>
+                    <option value="assistant">assistant</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={prompt.content}
+                    onChange={(e) =>
+                      updatePrompt(promptIndex, "content", e.target.value)
+                    }
+                    className="flex-1 p-2 border rounded-md"
+                    placeholder="Prompt content"
+                  />
+                  <button
+                    onClick={() => removePrompt(promptIndex)}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <MinusCircle size={20} />
+                  </button>
+                </div>
+              ))}
+            </div>
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-semibold text-gray-800">Scenarios</h2>
               <button
@@ -438,7 +470,7 @@ ${config.defaultTest.assert
             <textarea
               value={generatedYaml}
               readOnly
-              rows={38}
+              rows={29}
               className="w-full h-full p-4 border border-black/10 rounded-md bg-black/10 font-mono text-sm"
             />
 
